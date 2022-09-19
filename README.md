@@ -60,6 +60,9 @@ pr.FromYAMLFile(`/opt/local/app.yaml`)
 pr.FromEnv("MYGREENHOUSE_")
 ```
 
+Sources are processed in the order they were registered meaning the last source has the highest
+priority.
+
 Lastly, call ``pr.Process()``:
 
 ```golang
