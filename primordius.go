@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -37,11 +38,17 @@ type (
 	yamlContentSource struct {
 		content []byte
 	}
+	yamlReaderSource struct {
+		r io.Reader
+	}
 	jsonFileSource struct {
 		name string
 	}
 	jsonContentSource struct {
 		content []byte
+	}
+	jsonReaderSource struct {
+		r io.Reader
 	}
 	envSource struct {
 		prefix string
@@ -61,6 +68,15 @@ func (y *yamlContentSource) ToTarget(t any) error {
 	return yaml.Unmarshal(y.content, t)
 }
 
+func (y *yamlReaderSource) ToTarget(t any) error {
+	cont, err := io.ReadAll(y.r)
+	if err != nil {
+		return err
+	}
+
+	return yaml.Unmarshal(cont, t)
+}
+
 func (j *jsonFileSource) ToTarget(t any) error {
 	cont, err := os.ReadFile(j.name)
 	if err != nil {
@@ -72,6 +88,15 @@ func (j *jsonFileSource) ToTarget(t any) error {
 
 func (j *jsonContentSource) ToTarget(t any) error {
 	return json.Unmarshal(j.content, t)
+}
+
+func (y *jsonReaderSource) ToTarget(t any) error {
+	cont, err := io.ReadAll(y.r)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(cont, t)
 }
 
 func (es *envSource) ToTarget(spec any) error {
@@ -217,6 +242,11 @@ func (pr *Primordius) FromYAML(content []byte) {
 	pr.AddSource(&yamlContentSource{content: content})
 }
 
+// FromYAMLReader adds a Source to pr which reads JSON content from r.
+func (pr *Primordius) FromYAMLReader(r io.Reader) {
+	pr.AddSource(&yamlReaderSource{r: r})
+}
+
 // FromJSONFile adds a Source to pr which reads values from a JSON file.
 func (pr *Primordius) FromJSONFile(name string) {
 	pr.AddSource(&jsonFileSource{name: name})
@@ -225,6 +255,11 @@ func (pr *Primordius) FromJSONFile(name string) {
 // FromJSON adds a Source to pr which reads values from a JSON block.
 func (pr *Primordius) FromJSON(content []byte) {
 	pr.AddSource(&jsonContentSource{content: content})
+}
+
+// FromJSONReader adds a Source to pr which reads YAML content from r.
+func (pr *Primordius) FromJSONReader(r io.Reader) {
+	pr.AddSource(&jsonReaderSource{r: r})
 }
 
 // FromEnv adds a Source to pr which reads values from environment variables.
