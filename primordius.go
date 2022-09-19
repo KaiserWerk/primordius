@@ -28,7 +28,6 @@ type (
 		sources []Source
 		m       *sync.RWMutex
 		t       *time.Ticker
-		ctx     context.Context
 		cf      context.CancelFunc
 	}
 	yamlFileSource struct {
@@ -106,29 +105,35 @@ func New(target any) *Primordius {
 	return &Primordius{
 		target: target,
 		m:      new(sync.RWMutex),
+		cf:     func() {}, // make sure cf is never nil to prevent panic
 	}
 }
 
 // NewWithReload is like new, but sets up an interval at which the configuration is re-read into target.
 func NewWithReload(target any, d time.Duration) *Primordius {
+	var ctx context.Context
 	p := Primordius{
 		target: target,
 		m:      new(sync.RWMutex),
 		t:      time.NewTicker(d),
 	}
-	p.ctx, p.cf = context.WithCancel(context.Background())
+	ctx, p.cf = context.WithCancel(context.Background())
 
 	go func() {
 		for {
 			select {
-			case <-p.ctx.Done():
+			case <-ctx.Done():
 				return
 			case <-p.t.C:
-
+				_ = p.Process()
 			}
 		}
 	}()
 	return &p
+}
+
+func (pr *Primordius) Stop() {
+	pr.cf()
 }
 
 // Process calls all registered Sources to write values into pr.target.
@@ -176,5 +181,12 @@ func (pr *Primordius) FromEnv(prefix string) {
 func (pr *Primordius) AddSource(s Source) {
 	pr.m.Lock()
 	pr.sources = append(pr.sources, s)
+	pr.m.Unlock()
+}
+
+// ResetSources empties the internal list of registered Sources.
+func (pr *Primordius) ResetSources() {
+	pr.m.Lock()
+	pr.sources = make([]Source, 0, 5)
 	pr.m.Unlock()
 }
