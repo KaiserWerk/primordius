@@ -94,6 +94,7 @@ func (es *envSource) ToTarget(spec any) error {
 		if f.IsValid() {
 			f.SetString(os.Getenv(es.prefix + t.Field(i).Tag.Get(tagName)))
 		}
+		// TODO: implement types other than string
 	}
 
 	return nil
@@ -117,10 +118,21 @@ func NewWithReload(target any, d time.Duration) *Primordius {
 	}
 	p.ctx, p.cf = context.WithCancel(context.Background())
 
+	go func() {
+		for {
+			select {
+			case <-p.ctx.Done():
+				return
+			case <-p.t.C:
+
+			}
+		}
+	}()
 	return &p
 }
 
 // Process calls all registered Sources to write values into pr.target.
+// Registered sources are processed in the order they were initially added.
 func (pr *Primordius) Process() error {
 	pr.m.Lock()
 	defer pr.m.Unlock()
@@ -160,6 +172,7 @@ func (pr *Primordius) FromEnv(prefix string) {
 }
 
 // AddSource adds a Source to to pr to obtain arbitrary configuration values from.
+// Can also be used to add a custom Source.
 func (pr *Primordius) AddSource(s Source) {
 	pr.m.Lock()
 	pr.sources = append(pr.sources, s)
