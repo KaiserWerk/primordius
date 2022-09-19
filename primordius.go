@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -90,10 +91,63 @@ func (es *envSource) ToTarget(spec any) error {
 		//fmt.Printf("%d: %s %s = %v\n", i, t.Field(i).Name, f.Type(), f.Interface())
 		//tag := f.Tag.Get(tagName)
 
-		if f.IsValid() {
-			f.SetString(os.Getenv(es.prefix + t.Field(i).Tag.Get(tagName)))
+		if !f.IsValid() {
+			continue
 		}
-		// TODO: implement types other than string
+		val, exists := os.LookupEnv(es.prefix + t.Field(i).Tag.Get(tagName))
+		if !exists {
+			continue
+		}
+
+		switch f.Kind() {
+		case reflect.String:
+			f.SetString(val)
+		case reflect.Int:
+			fallthrough
+		case reflect.Int8:
+			fallthrough
+		case reflect.Int16:
+			fallthrough
+		case reflect.Int32:
+			fallthrough
+		case reflect.Int64:
+			v, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				return err
+			}
+			f.SetInt(v)
+		case reflect.Uint:
+			fallthrough
+		case reflect.Uint8:
+			fallthrough
+		case reflect.Uint16:
+			fallthrough
+		case reflect.Uint32:
+			fallthrough
+		case reflect.Uint64:
+			v, err := strconv.ParseUint(val, 10, 64)
+			if err != nil {
+				return err
+			}
+			f.SetUint(v)
+		case reflect.Bool:
+			v, err := strconv.ParseBool(val)
+			if err != nil {
+				return err
+			}
+			f.SetBool(v)
+		case reflect.Float32:
+			fallthrough
+		case reflect.Float64:
+			v, err := strconv.ParseFloat(val, 64)
+			if err != nil {
+				return err
+			}
+			f.SetFloat(v)
+		case reflect.Slice:
+			f.SetBytes([]byte(val))
+		}
+
 	}
 
 	return nil
@@ -109,7 +163,7 @@ func New(target any) *Primordius {
 	}
 }
 
-// NewWithReload is like new, but sets up an interval at which the configuration is re-read into target.
+// NewWithReload is like New, but sets up an interval at which the configuration is re-read into target.
 func NewWithReload(target any, d time.Duration) *Primordius {
 	var ctx context.Context
 	p := &Primordius{
@@ -132,6 +186,8 @@ func NewWithReload(target any, d time.Duration) *Primordius {
 	return p
 }
 
+// Stop stops the automatic configuration reloading started via NewWithReload.
+// Calls to Stop for instances created via New() or repeated calls do nothing.
 func (pr *Primordius) Stop() {
 	pr.cf()
 }
