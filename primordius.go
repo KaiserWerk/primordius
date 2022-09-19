@@ -112,7 +112,7 @@ func New(target any) *Primordius {
 // NewWithReload is like new, but sets up an interval at which the configuration is re-read into target.
 func NewWithReload(target any, d time.Duration) *Primordius {
 	var ctx context.Context
-	p := Primordius{
+	p := &Primordius{
 		target: target,
 		m:      new(sync.RWMutex),
 		t:      time.NewTicker(d),
@@ -129,7 +129,7 @@ func NewWithReload(target any, d time.Duration) *Primordius {
 			}
 		}
 	}()
-	return &p
+	return p
 }
 
 func (pr *Primordius) Stop() {
