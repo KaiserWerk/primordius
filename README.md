@@ -43,7 +43,7 @@ It is important to note that you MUST supply a pointer to a struct as target.
 ``NewWithReload()`` sets up a configuration-reloading routine in the background 
 which is called at the supplied interval.
 
-The next step is to set up the desired sources. There are 5 default sources you can create directly
+The next step is to set up the desired sources. There are some default sources you can create directly
 on the Primordius struct:
 
 ```golang
@@ -51,10 +51,14 @@ on the Primordius struct:
 pr.FromJSON([]byte(`{"key": "some-key"}`))
 // Reads from the supplied file
 pr.FromJSONFile(`C:\Local\app.prod.json`)
+// Reads from an io.Reader
+pr.FromJSONReader(r.Body)
 // Reads from a YAML block, maybe obtained by an external service
 pr.FromYAML([]byte(`num_backups: 16`))
 // Reads from the supplied file
 pr.FromYAMLFile(`/opt/local/app.yaml`)
+// Reads from an io.Reader
+pr.FromYAMLReader(strings.NewReader(`base_url: "http://some-url"`))
 // Reads from the env vars defined in the 'env' tag combined with the supplied
 // prefix. If you don't need a prefix, supply an empty string.
 pr.FromEnv("MYGREENHOUSE_")
