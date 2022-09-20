@@ -31,6 +31,7 @@ type (
 		m       *sync.RWMutex
 		t       *time.Ticker
 		cf      context.CancelFunc
+		once    sync.Once
 	}
 	yamlFileSource struct {
 		name string
@@ -113,13 +114,15 @@ func (es *envSource) ToTarget(spec any) error {
 	t := s.Type()
 	for i := 0; i < s.NumField(); i++ {
 		f := s.Field(i)
-		//fmt.Printf("%d: %s %s = %v\n", i, t.Field(i).Name, f.Type(), f.Interface())
-		//tag := f.Tag.Get(tagName)
 
 		if !f.IsValid() {
 			continue
 		}
-		val, exists := os.LookupEnv(es.prefix + t.Field(i).Tag.Get(tagName))
+		tagVal := t.Field(i).Tag.Get(tagName)
+		if tagVal == "" || tagVal == "-" {
+			continue
+		}
+		val, exists := os.LookupEnv(es.prefix + tagVal)
 		if !exists {
 			continue
 		}
@@ -184,18 +187,23 @@ func New(target any) *Primordius {
 	return &Primordius{
 		target: target,
 		m:      new(sync.RWMutex),
-		cf:     func() {}, // make sure cf is never nil to prevent panic
+		cf:     func() {},   // make sure cf is never nil to prevent panic
+		once:   sync.Once{}, // make sure once is never nil to prevent panic
 	}
 }
 
-// NewWithReload is like New, but sets up an interval at which the configuration is re-read into target.
+// NewWithReload is like New, but sets up a background routine which re-reads the configuration into target
+// at the given interval.
+// NewWithReload is a non-blocking call.
 func NewWithReload(target any, d time.Duration) *Primordius {
-	var ctx context.Context
 	p := &Primordius{
 		target: target,
 		m:      new(sync.RWMutex),
 		t:      time.NewTicker(d),
+		once:   sync.Once{},
 	}
+
+	var ctx context.Context
 	ctx, p.cf = context.WithCancel(context.Background())
 
 	go func() {
@@ -213,8 +221,14 @@ func NewWithReload(target any, d time.Duration) *Primordius {
 
 // Stop stops the automatic configuration reloading started via NewWithReload.
 // Calls to Stop for instances created via New() or repeated calls do nothing.
+// Stop does not modify the target in any way.
 func (pr *Primordius) Stop() {
-	pr.cf()
+	pr.once.Do(func() {
+		pr.cf()
+		if pr.t != nil {
+			pr.t.Stop()
+		}
+	})
 }
 
 // Process calls all registered Sources to write values into pr.target.
