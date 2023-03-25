@@ -1,17 +1,14 @@
 package primordius
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
+	"github.com/BurntSushi/toml"
+	"gopkg.in/yaml.v2"
 	"io"
 	"os"
 	"reflect"
 	"strconv"
-	"sync"
-	"time"
-
-	"gopkg.in/yaml.v2"
 )
 
 const tagName = "env"
@@ -28,10 +25,6 @@ type (
 	Primordius struct {
 		target  any
 		sources []Source
-		m       *sync.RWMutex
-		t       *time.Ticker
-		cf      context.CancelFunc
-		once    sync.Once
 	}
 	yamlFileSource struct {
 		name string
@@ -49,6 +42,15 @@ type (
 		content []byte
 	}
 	jsonReaderSource struct {
+		r io.Reader
+	}
+	tomlFileSource struct {
+		name string
+	}
+	tomlContentSource struct {
+		content []byte
+	}
+	tomlReaderSource struct {
 		r io.Reader
 	}
 	envSource struct {
@@ -98,6 +100,26 @@ func (y *jsonReaderSource) ToTarget(t any) error {
 	}
 
 	return json.Unmarshal(cont, t)
+}
+
+func (to *tomlFileSource) ToTarget(t any) error {
+	_, err := toml.DecodeFile(to.name, t)
+	return err
+}
+
+func (to *tomlContentSource) ToTarget(t any) error {
+	_, err := toml.Decode(string(to.content), t)
+	return err
+}
+
+func (to *tomlReaderSource) ToTarget(t any) error {
+	cont, err := io.ReadAll(to.r)
+	if err != nil {
+		return err
+	}
+
+	_, err = toml.Decode(string(cont), t)
+	return err
 }
 
 func (es *envSource) ToTarget(spec any) error {
@@ -186,57 +208,12 @@ func (es *envSource) ToTarget(spec any) error {
 func New(target any) *Primordius {
 	return &Primordius{
 		target: target,
-		m:      new(sync.RWMutex),
-		cf:     func() {},   // make sure cf is never nil to prevent panic
-		once:   sync.Once{}, // make sure once is never nil to prevent panic
 	}
-}
-
-// NewWithReload is like New, but sets up a background routine which re-reads the configuration into target
-// at the given interval.
-// NewWithReload is a non-blocking call.
-func NewWithReload(target any, d time.Duration) *Primordius {
-	p := &Primordius{
-		target: target,
-		m:      new(sync.RWMutex),
-		t:      time.NewTicker(d),
-		once:   sync.Once{},
-	}
-
-	var ctx context.Context
-	ctx, p.cf = context.WithCancel(context.Background())
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-p.t.C:
-				_ = p.Process()
-			}
-		}
-	}()
-	return p
-}
-
-// Stop stops the automatic configuration reloading started via NewWithReload.
-// Calls to Stop for instances created via New() or repeated calls do nothing.
-// Stop does not modify the target in any way.
-func (pr *Primordius) Stop() {
-	pr.once.Do(func() {
-		pr.cf()
-		if pr.t != nil {
-			pr.t.Stop()
-		}
-	})
 }
 
 // Process calls all registered Sources to write values into pr.target.
 // Registered sources are processed in the order they were initially added.
 func (pr *Primordius) Process() error {
-	pr.m.Lock()
-	defer pr.m.Unlock()
-
 	for _, s := range pr.sources {
 		if err := s.ToTarget(pr.target); err != nil {
 			return err
@@ -276,22 +253,30 @@ func (pr *Primordius) FromJSONReader(r io.Reader) {
 	pr.AddSource(&jsonReaderSource{r: r})
 }
 
+func (pr *Primordius) FromTOMLFile(name string) {
+	pr.AddSource(&tomlFileSource{name: name})
+}
+
+func (pr *Primordius) FromTOML(content []byte) {
+	pr.AddSource(&tomlContentSource{content: content})
+}
+
+func (pr *Primordius) FromTOMLReader(r io.Reader) {
+	pr.AddSource(&tomlReaderSource{r: r})
+}
+
 // FromEnv adds a Source to pr which reads values from environment variables.
 func (pr *Primordius) FromEnv(prefix string) {
 	pr.AddSource(&envSource{prefix: prefix})
 }
 
-// AddSource adds a Source to to pr to obtain arbitrary configuration values from.
+// AddSource adds a Source s to pr to obtain arbitrary configuration values from.
 // Can also be used to add a custom Source.
 func (pr *Primordius) AddSource(s Source) {
-	pr.m.Lock()
 	pr.sources = append(pr.sources, s)
-	pr.m.Unlock()
 }
 
 // ResetSources empties the internal list of registered Sources.
 func (pr *Primordius) ResetSources() {
-	pr.m.Lock()
 	pr.sources = make([]Source, 0, 5)
-	pr.m.Unlock()
 }

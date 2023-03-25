@@ -1,6 +1,5 @@
 # primordius
-Primordius is a Go library to read configuration values from different sources (YAML files, JSON files, env vars) with 
-optional automatic reload.
+Primordius is a Go library to read configuration values from different sources (YAML, JSON, TOML, env vars).
 
 ## Installation
 
@@ -35,15 +34,11 @@ Then, a new Primordius instance:
 
 ```golang
 pr := primordius.New(&c)
-// or
-pr := primordius.NewWithReload(&c, 5*time.Minute)
 ```
 
 It is important to note that you MUST supply a pointer to a struct as target.
-``NewWithReload()`` sets up a configuration-reloading routine in the background 
-which is called at the supplied interval.
 
-The next step is to set up the desired sources. There are some default sources you can create directly
+The next step is to set up the desired sources. There are some default sources you can add directly
 on the Primordius struct:
 
 ```golang
@@ -59,9 +54,15 @@ pr.FromYAML([]byte(`num_backups: 16`))
 pr.FromYAMLFile(`/opt/local/app.yaml`)
 // Reads from an io.Reader
 pr.FromYAMLReader(strings.NewReader(`base_url: "http://some-url"`))
+// Reads from a YAML block, maybe obtained by an external service
+pr.FromTOML([]byte(`data = [ ["delta", "phi"], [3.14] ]`))
+// Reads from the supplied file
+pr.FromTOMLFile("C:\\Users\\SomeUser\\AppData\\Local\\my-app\\config.prod.toml")
+// Reads from an io.Reader
+pr.FromTOMLReader(resp.Body)
 // Reads from the env vars defined in the 'env' tag combined with the supplied
 // prefix. If you don't need a prefix, supply an empty string.
-pr.FromEnv("MYGREENHOUSE_")
+pr.FromEnv("MY_APP_")
 ```
 
 Sources are processed in the order they were registered meaning the last source has the highest
